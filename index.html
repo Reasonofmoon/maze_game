@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Game with Levels</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #game-container {
+            text-align: center;
+        }
+        #maze {
+            display: inline-block;
+            border: 2px solid #333;
+        }
+        .cell {
+            width: 25px;
+            height: 25px;
+            display: inline-block;
+            font-size: 20px;
+            line-height: 25px;
+            text-align: center;
+        }
+        .wall { background-color: #333; }
+        .path { background-color: #fff; }
+        .player { background-color: #4CAF50; }
+        .exit { background-color: #FFC107; }
+        .trap { background-color: #F44336; }
+        .monster { background-color: #9C27B0; }
+        #message, #score, #level {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        button, select {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Maze Game with Levels</h1>
+        <div>
+            <select id="difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+            </select>
+            <button onclick="startNewGame()">Start New Game</button>
+        </div>
+        <div id="maze"></div>
+        <div id="message"></div>
+        <div id="score"></div>
+        <div id="level"></div>
+    </div>
+
+    <script>
+        const WALL = 0, PATH = 1, PLAYER = 2, EXIT = 3, TRAP = 4, MONSTER = 5;
+        let maze, playerX, playerY, exitX, exitY;
+        let gameInterval, timeLeft, score, currentLevel;
+        let WIDTH, HEIGHT, difficulty;
+
+        function createMaze() {
+            maze = Array(HEIGHT).fill().map(() => Array(WIDTH).fill(WALL));
+            let stack = [[1, 1]];
+            maze[1][1] = PATH;
+
+            while (stack.length > 0) {
+                let [x, y] = stack.pop();
+                const directions = [[0, 2], [2, 0], [0, -2], [-2, 0]];
+                shuffleArray(directions);
+
+                for (let [dx, dy] of directions) {
+                    let nx = x + dx, ny = y + dy;
+                    if (nx > 0 && nx < WIDTH - 1 && ny > 0 && ny < HEIGHT - 1 && maze[ny][nx] === WALL) {
+                        maze[y + dy/2][x + dx/2] = PATH;
+                        maze[ny][nx] = PATH;
+                        stack.push([nx, ny]);
+                    }
+                }
+            }
+
+            playerX = 1;
+            playerY = 1;
+            exitX = WIDTH - 2;
+            exitY = HEIGHT - 2;
+
+            // Create safe path
+            let safePath = findPath(playerX, playerY, exitX, exitY);
+            safePath.forEach(([x, y]) => maze[y][x] = PATH);
+
+            maze[playerY][playerX] = PLAYER;
+            maze[exitY][exitX] = EXIT;
+
+            addEntities(safePath);
+        }
+
+        function findPath(startX, startY, endX, endY) {
+            let queue = [[startX, startY]];
+            let visited = new Set(`${startX},${startY}`);
+            let parent = new Map();
+
+            while (queue.length > 0) {
+                let [x, y] = queue.shift();
+                if (x === endX && y === endY) {
+                    let path = [];
+                    while (x !== startX || y !== startY) {
+                        path.unshift([x, y]);
+                        [x, y] = parent.get(`${x},${y}`);
+                    }
+                    return path;
+                }
+
+                for (let [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+                    let nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT && 
+                        maze[ny][nx] !== WALL && !visited.has(`${nx},${ny}`)) {
+                        queue.push([nx, ny]);
+                        visited.add(`${nx},${ny}`);
+                        parent.set(`${nx},${ny}`, [x, y]);
+                    }
+                }
+            }
+            return [];
+        }
+
+        function addEntities(safePath) {
+            const safeSet = new Set(safePath.map(([x, y]) => `${x},${y}`));
+            const numTraps = Math.floor(WIDTH * HEIGHT * 0.05);
+            const numMonsters = Math.floor(WIDTH * HEIGHT * 0.03);
+
+            for (let i = 0; i < numTraps; i++) addEntityToMaze(TRAP, safeSet);
+            for (let i = 0; i < numMonsters; i++) addEntityToMaze(MONSTER, safeSet);
+        }
+
+        function addEntityToMaze(entity, safeSet) {
+            while (true) {
+                let x = Math.floor(Math.random() * WIDTH);
+                let y = Math.floor(Math.random() * HEIGHT);
+                if (maze[y][x] === PATH && !safeSet.has(`${x},${y}`)) {
+                    maze[y][x] = entity;
+                    break;
+                }
+            }
+        }
+
+        function renderMaze() {
+            const mazeElement = document.getElementById('maze');
+            mazeElement.innerHTML = '';
+            for (let y = 0; y < HEIGHT; y++) {
+                for (let x = 0; x < WIDTH; x++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    switch (maze[y][x]) {
+                        case WALL: cell.classList.add('wall'); break;
+                        case PATH: cell.classList.add('path'); break;
+                        case PLAYER: cell.classList.add('player'); cell.textContent = '👤'; break;
+                        case EXIT: cell.classList.add('exit'); cell.textContent = '🚪'; break;
+                        case TRAP: cell.classList.add('trap'); cell.textContent = '💀'; break;
+                        case MONSTER: cell.classList.add('monster'); cell.textContent = '👾'; break;
+                    }
+                    mazeElement.appendChild(cell);
+                }
+                mazeElement.appendChild(document.createElement('br'));
+            }
+        }
+
+        function movePlayer(dx, dy) {
+            let newX = playerX + dx;
+            let newY = playerY + dy;
+
+            if (newX >= 0 && newX < WIDTH && newY >= 0 && newY < HEIGHT && maze[newY][newX] !== WALL) {
+                maze[playerY][playerX] = PATH;
+                playerX = newX;
+                playerY = newY;
+
+                switch (maze[playerY][playerX]) {
+                    case EXIT:
+                        nextLevel();
+                        break;
+                    case TRAP:
+                        endGame("Oh no! You've fallen into a trap. Game over!");
+                        break;
+                    case MONSTER:
+                        endGame("A monster got you! Game over!");
+                        break;
+                }
+
+                maze[playerY][playerX] = PLAYER;
+                score += 1;
+                renderMaze();
+                updateScore();
+            }
+        }
+
+        function handleKeyPress(event) {
+            switch(event.key) {
+                case 'ArrowUp': movePlayer(0, -1); break;
+                case 'ArrowDown': movePlayer(0, 1); break;
+                case 'ArrowLeft': movePlayer(-1, 0); break;
+                case 'ArrowRight': movePlayer(1, 0); break;
+            }
+        }
+
+        function startNewGame() {
+            difficulty = document.getElementById('difficulty').value;
+            switch (difficulty) {
+                case 'easy': WIDTH = 15; HEIGHT = 15; timeLeft = 120; break;
+                case 'medium': WIDTH = 20; HEIGHT = 20; timeLeft = 180; break;
+                case 'hard': WIDTH = 25; HEIGHT = 25; timeLeft = 240; break;
+            }
+            score = 0;
+            currentLevel = 1;
+            initLevel();
+        }
+
+        function initLevel() {
+            createMaze();
+            renderMaze();
+            document.getElementById('message').textContent = 'Use arrow keys to move!';
+            document.addEventListener('keydown', handleKeyPress);
+            updateTimer();
+            updateScore();
+            updateLevel();
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(updateTimer, 1000);
+        }
+
+        function nextLevel() {
+            currentLevel++;
+            score += 50; // Bonus for completing a level
+            WIDTH += 2;
+            HEIGHT += 2;
+            timeLeft += 30; // Additional time for the next level
+            initLevel();
+        }
+
+        function updateTimer() {
+            document.getElementById('message').textContent = `Time left: ${timeLeft} seconds`;
+            if (timeLeft <= 0) {
+                endGame("Time's up! Game over.");
+            }
+            timeLeft--;
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = `Score: ${score}`;
+        }
+
+        function updateLevel() {
+            document.getElementById('level').textContent = `Level: ${currentLevel}`;
+        }
+
+        function endGame(message) {
+            clearInterval(gameInterval);
+            document.removeEventListener('keydown', handleKeyPress);
+            document.getElementById('message').textContent = message;
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // Initialize the game when the page loads
+        window.onload = () => {
+            startNewGame();
+        };
+    </script>
+</body>
+</html>
